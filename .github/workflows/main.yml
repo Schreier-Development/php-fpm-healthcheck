@@ -6,10 +6,11 @@ on:
   push:
     branches: [main]
     paths: ["src/**"]
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ["self-hosted", "Linux", "debian"]
+    runs-on: ubuntu-latest
 
     permissions:
       contents: read
