@@ -1,0 +1,76 @@
+name: "Build"
+
+on:
+  schedule:
+    - cron: 0 6 * * MON
+  push:
+    branches: [main]
+    paths: ["src/**"]
+
+jobs:
+  build:
+    runs-on: ["self-hosted", "Linux", "debian"]
+
+    permissions:
+      contents: read
+      packages: write
+
+    env:
+      PHP_IMG: php:fpm-alpine
+      REPO_GITHUB: ghcr.io/${{ github.repository }}
+      REPO_DOCKER: ${{ secrets.AUTH_DOCKER_USER }}/${{ github.event.repository.name }}
+
+    steps:
+      - name: 🛎️ Checkout
+        uses: actions/checkout@v3
+
+      - name: 📚 Set up QEMU
+        uses: docker/setup-qemu-action@v2.1.0
+
+      - name: 📚 Docker Setup Buildx
+        uses: docker/setup-buildx-action@v2.5.0
+
+      - name: ℹ️ Get PHP Version
+        id: version
+        run: |
+          docker pull ${{ env.PHP_IMG }}
+          PHP_VER=$(docker run --rm -i ${{ env.PHP_IMG }} sh -c 'echo "$PHP_VERSION"')
+          docker image rm ${{ env.PHP_IMG }}
+          echo "php=$PHP_VER" >> "$GITHUB_OUTPUT"
+
+      - name: 🔐 Login to docker.io
+        uses: docker/login-action@v2.1.0
+        with:
+          username: ${{ secrets.AUTH_DOCKER_USER }}
+          password: ${{ secrets.AUTH_DOCKER_KEY }}
+
+      - name: 🔐 Login to ghcr.io
+        uses: docker/login-action@v2.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📝 Docker Metadata action
+        uses: docker/metadata-action@v4.4.0
+        id: meta
+        with:
+          images: |
+            ${{ env.REPO_DOCKER }}
+            ${{ env.REPO_GITHUB }}
+          flavor: |
+            latest=true
+          tags: |
+            ${{ steps.version.outputs.php }}
+
+      - name: 🛠️ Build and push Docker images
+        uses: docker/build-push-action@v4.0.0
+        id: build-push-action
+        with:
+          provenance: false
+          context: .
+          file: ./src/Dockerfile
+          platforms: linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v6
+          push: true
+          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta.outputs.tags }}
